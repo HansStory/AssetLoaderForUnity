@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading.Tasks;
 using UnityEngine;
 
 public enum RenderPipeline
@@ -44,6 +45,16 @@ public struct OptimizedMeshData
     public List<Vector3> Normals;
     public List<Vector2> Uvs;
     public List<int> Triangles;
+}
+
+[System.Serializable]
+public class ObjFileParseData
+{
+    public List<Vector3> Vertices;
+    public List<Vector3> Normals;
+    public List<Vector2> Uvs;
+    public List<ObjObject> Objects;
+    public string FileName;
 }
 
 public class LoaderModule : MonoBehaviour
@@ -135,7 +146,76 @@ public class LoaderModule : MonoBehaviour
             Debug.LogError($"Error reading OBJ file: {e.Message}");
             return;
         }
+    }
 
+    public async Task<GameObject> LoadAssetAsync(string assetPath)
+    {
+        if (string.IsNullOrEmpty(assetPath))
+        {
+            Debug.LogError("Asset path is null or empty!");
+            return null;
+        }
+
+        if (!File.Exists(assetPath))
+        {
+            Debug.LogError($"File not found: {assetPath}");
+            return null;
+        }
+
+        // 비동기 파일 파싱
+        ObjFileParseData parsedData = await AsyncOBJFileParse(assetPath);
+
+        // 메인 쓰레드에서 UnityGameObject 생성
+        GameObject objGameObject = CreateGameObjectsOptimized(
+            parsedData.Vertices,
+            parsedData.Normals,
+            parsedData.Uvs,
+            parsedData.Objects,
+            parsedData.FileName
+        );
+
+        return objGameObject;
+    }
+
+    private Task<ObjFileParseData> AsyncOBJFileParse(string assetPath)
+    {
+        return Task.Run(() =>
+        {
+            List<Vector3> vertices = _preallocateCollections ? new List<Vector3>(_expectationVertexCount) : new List<Vector3>();
+            List<Vector3> normals = _preallocateCollections ? new List<Vector3>(_expectationVertexCount) : new List<Vector3>();
+            List<Vector2> uvs = _preallocateCollections ? new List<Vector2>(_expectationVertexCount) : new List<Vector2>();
+
+            string fileName = Path.GetFileNameWithoutExtension(assetPath);
+
+            var objects = new List<ObjObject>();
+            var currentObject = new ObjObject { Name = fileName, Faces = new List<ObjFace>() };
+
+            using (StreamReader reader = new StreamReader(assetPath))
+            {
+                while (!reader.EndOfStream)
+                {
+                    string line = reader.ReadLine().Trim();
+                    if (string.IsNullOrEmpty(line) || line[0] == '#') continue;
+
+                    ParseObjFile(line, vertices, normals, uvs, objects, ref currentObject);
+                }
+            }
+
+            if (currentObject.Faces.Count > 0)
+                objects.Add(currentObject);
+
+            if (objects.Count == 0)
+                objects.Add(currentObject);
+
+            return new ObjFileParseData
+            {
+                Vertices = vertices,
+                Normals = normals,
+                Uvs = uvs,
+                Objects = objects,
+                FileName = fileName
+            };
+        });
     }
 
     private void ParseObjFile(string line, List<Vector3> vertices, List<Vector3> normals, List<Vector2> uvs,

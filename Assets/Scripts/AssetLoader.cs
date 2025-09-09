@@ -12,12 +12,13 @@ public class AssetLoader : MonoBehaviour
     private void Start()
     {
         string selectedAssetName = EditorUtility.OpenFilePanel("Select obj model", "", "obj");
-        Load(selectedAssetName);
+        //Load(selectedAssetName);
+        AsyncLoad(selectedAssetName);
     }
 
     public void Load(string assetName)
     {
-        if(_showLoadTime)
+        if (_showLoadTime)
         {
             Debug.Log($"OBJ 파일 로딩 시작: {assetName}");
             _loadStartTime = Time.realtimeSinceStartup;
@@ -36,5 +37,24 @@ public class AssetLoader : MonoBehaviour
         }
 
         loadedAsset.transform.SetParent(transform);
+    }
+
+    public async void AsyncLoad(string assetName)
+    {
+        Debug.Log($"OBJ 파일 비동기 로딩 시작: {assetName}");
+        _loadStartTime = Time.realtimeSinceStartup;
+
+        GameObject loadedAsset = await LoaderModule.LoadAssetAsync(assetName);
+
+        if (loadedAsset != null)
+        {
+            if (_showLoadTime)
+            {
+                float loadTime = Time.realtimeSinceStartup - _loadStartTime;
+                Debug.Log($"OBJ 로딩 완료! 소요 시간: {loadTime:F3}초");
+            }
+
+            loadedAsset.transform.SetParent(transform);
+        }
     }
 }
